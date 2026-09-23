@@ -1,24 +1,78 @@
+import sys
 from datetime import datetime, timezone
 
 import requests
+from bitcoinlib.encoding import EncodingError
+from bitcoinlib.keys import Address
 from rich.pretty import pprint
 
 # https://mempool.space/api/address/1wiz18xYmhRX6xStj2b9t1rwWX4GKUgpv/txs
 
-address = "1wiz18xYmhRX6xStj2b9t1rwWX4GKUgpv"
 
-# TIME year, month, day, hour, minute, timezone
-dt_original = datetime(2014, 5, 1, 0, 0, tzinfo=timezone.utc)
-
-# AMOUNT in satoshis + THRESHOLD in percent
-
-amount_original = 13_370_000
-threshold = 15
+def is_valid_bitcoin_address(address):
+    try:
+        Address.parse(address)
+        return True
+    except EncodingError:
+        return False
 
 
 
+# INPUT Address
+user_input_address = input("Address:\n> ")
 
+if user_input_address == "test":
+    address = "1wiz18xYmhRX6xStj2b9t1rwWX4GKUgpv"
+    dt_original = datetime(2014, 5, 1, 0, 0, tzinfo=timezone.utc)
+    amount_original = 13_370_000
+    threshold = 15
 
+else:
+    if not is_valid_bitcoin_address(user_input_address):
+        print("Invalid Bitcoin address")
+        sys.exit()
+
+    address = user_input_address
+
+    # INPUT Date/Time
+    user_input_datetime = input("Date/Time (year month day hour minute) - UTC +0\n>")
+
+    try:
+        user_dt = [int(val) for val in user_input_datetime.split()]
+        
+        if len(user_dt) != 5:
+            raise ValueError("Exactly 5 numbers are required")
+        
+        dt_original = datetime(
+            user_dt[0], 
+            user_dt[1], 
+            user_dt[2], 
+            user_dt[3], 
+            user_dt[4], 
+            tzinfo=timezone.utc)
+    except ValueError:
+        print("One of your values isn't valid")
+        sys.exit()
+
+    # INPUT AMOUNT
+    try:
+        amount_original = int(input("Target amount:\n>"))
+        if amount_original <= 0:
+            print("Target amount must be greater than 0")
+            sys.exit()
+    except ValueError:
+        print("Entered target amount is not a valid number")
+        sys.exit()
+        
+    # INPUT Threshold
+    try:
+        threshold = int(input("Target threshold:\n>"))
+        if not 0 < threshold <= 100:
+            print("Threshold should be between 1 and 100")
+            sys.exit()
+    except ValueError:
+        print("Entered target threshold is not a valid number")
+        sys.exit()
 
 
 
@@ -77,7 +131,7 @@ while True:
 
             outputs.append(output)
 
-    # filter all tx before the original tx
+    # Keep only outputs after the original date/time
     filtered_date_outputs = [tx for tx in outputs
                         if tx["time"] is not None
                         and tx["time"] > dt_original_unix
