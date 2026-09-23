@@ -26,6 +26,11 @@ amount_min = amount_original * (1 - threshold / 100)
 amount_max = amount_original * (1 + threshold / 100)
 
 
+
+
+
+
+
 # generate list with needed information per tx
 for trans in data:
     for output_index, out in enumerate(trans["vout"]):
@@ -42,7 +47,7 @@ for trans in data:
 # filter all tx before the original tx
 filtered_date_outputs = [tx for tx in outputs
                     if tx["time"] is not None
-                    and tx["time"] >= dt_original_unix
+                    and tx["time"] > dt_original_unix
                     ]
 
 # filter all tx outside the set threshold
@@ -50,7 +55,12 @@ filtered_amount_outputs = [tx for tx in filtered_date_outputs
                             if amount_min < tx["amount"] < amount_max
                         ]
 
-pprint(filtered_amount_outputs)
+closest_output = min(
+    filtered_date_outputs,
+    key=lambda tx: abs(tx["amount"] - amount_original)
+)
+
+pprint(closest_output)
 
 # Amount/address heuristic:
 # 1. Get all transactions for the current address.
