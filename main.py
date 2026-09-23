@@ -1,11 +1,12 @@
+from datetime import datetime, timezone
+
 import requests
+from rich.pretty import pprint
 
 # https://mempool.space/api/address/1wiz18xYmhRX6xStj2b9t1rwWX4GKUgpv/txs
 
 address = "1wiz18xYmhRX6xStj2b9t1rwWX4GKUgpv"
 url = f"https://mempool.space/api/address/{address}/txs"
-
-# amount= ""
 
 response = requests.get(url)
 response.raise_for_status()
@@ -14,6 +15,18 @@ data = response.json()
 
 outputs = []
 
+# TIME year, month, day, hour, minute, timezone
+dt_original = datetime(2024, 4,25,6,30, tzinfo=timezone.utc)
+dt_original_unix = int(dt_original.timestamp())
+
+# AMOUNT in satoshis + THRESHOLD in percent
+amount_original = 6000
+threshold = 15
+amount_min = amount_original * (1 - threshold / 100)
+amount_max = amount_original * (1 + threshold / 100)
+
+
+# generate list with needed information per tx
 for trans in data:
     for output_index, out in enumerate(trans["vout"]):
         output = {
@@ -21,12 +34,23 @@ for trans in data:
             "vout": output_index,
             "amount": out.get("value"),
             "address": out.get("scriptpubkey_address"),
-            "time": trans["status"]["block_time"]
+            "time": trans["status"].get("block_time")
         }
 
         outputs.append(output)
 
-print(outputs)
+# filter all tx before the original tx
+filtered_date_outputs = [tx for tx in outputs
+                    if tx["time"] is not None
+                    and tx["time"] >= dt_original_unix
+                    ]
+
+# filter all tx outside the set threshold
+filtered_amount_outputs = [tx for tx in filtered_date_outputs
+                            if amount_min < tx["amount"] < amount_max
+                        ]
+
+pprint(filtered_amount_outputs)
 
 # Amount/address heuristic:
 # 1. Get all transactions for the current address.
