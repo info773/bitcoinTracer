@@ -15,13 +15,96 @@ def is_valid_bitcoin_address(address):
         return True
     except EncodingError:
         return False
+    
+def fetch_transactions(address):
+        url = f"https://mempool.space/api/address/{address}/txs"
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
+    
+    
+def get_outgoing_outputs(transactions, address):
+    outputs = []
+
+    for trans in transactions:
+        address_is_input = any(
+            vin.get("prevout", {}).get("scriptpubkey_address") == address
+            for vin in trans["vin"]
+        )
+
+        if not address_is_input:
+            continue
+
+        for output_index, out in enumerate(trans["vout"]):
+            if out.get("scriptpubkey_address") == address:
+                continue
+
+            outputs.append({
+                "txid": trans["txid"],
+                "vout": output_index,
+                "amount": out.get("value"),
+                "address": out.get("scriptpubkey_address"),
+                "time": trans["status"].get("block_time"),
+            })
+
+    return outputs
+
+
+def trace_by_address(
+    address,
+    dt_original_unix,
+    amount_original,
+    amount_min,
+    amount_max
+):
+    visited = set()
+    last_output = None
+
+    while True:
+        if address in visited:
+            print("STOP: Address already visited")
+            break
+
+        visited.add(address)
+
+        transactions = fetch_transactions(address)
+        outputs = get_outgoing_outputs(transactions, address)
+
+        filtered_date_outputs = [
+            tx for tx in outputs
+            if tx["time"] is not None
+            and tx["time"] > dt_original_unix
+        ]
+
+        if not filtered_date_outputs:
+            print("STOP: No outputs after the original date.")
+            break
+
+        closest_output = min(
+            filtered_date_outputs,
+            key=lambda tx: abs(tx["amount"] - amount_original)
+        )
+
+        if not amount_min <= closest_output["amount"] <= amount_max:
+            print("STOP: Closest output is outside the set threshold")
+            break
+
+        if closest_output["address"] is None:
+            print("STOP: Closest output has no address.")
+            break
+
+        last_output = closest_output
+        address = closest_output["address"]
+
+    return last_output
 
 
 
-# INPUT Address
+# INPUTS + VALIDATION
+
+# Bitcoin-Adress / Test Case
 user_input_address = input("Address:\n> ")
 
-# INPUT test case
 if user_input_address == "test":
     address = "1wiz18xYmhRX6xStj2b9t1rwWX4GKUgpv"
     dt_original = datetime(2014, 5, 1, 0, 0, tzinfo=timezone.utc)
@@ -83,88 +166,19 @@ dt_original_unix = int(dt_original.timestamp())
 amount_min = amount_original * (1 - threshold / 100)
 amount_max = amount_original * (1 + threshold / 100)
 
-visited = set()
-last_output = None
 
-while True:
-    if address in visited:
-        print("STOP: Address already visited")
-        break
+result = trace_by_address(
+    address,
+    dt_original_unix,
+    amount_original,
+    amount_min,
+    amount_max
+)
 
-    visited.add(address)
-    
-    url = f"https://mempool.space/api/address/{address}/txs"
-
-    response = requests.get(url)
-    response.raise_for_status()
-
-    data = response.json()
-
-    outputs = []
-
-
-
-    # generate list with needed information per tx
-    for trans in data:
-
-        # Check whether the current address is actually an input
-        address_is_input = any(
-            vin.get("prevout", {}).get("scriptpubkey_address") == address
-            for vin in trans["vin"]
-        )
-
-        # Ignore transactions where the current address did not spend funds
-        if not address_is_input:
-            continue
-
-        for output_index, out in enumerate(trans["vout"]):
-
-            # Ignore outputs going back to the current address
-            if out.get("scriptpubkey_address") == address:
-                continue
-
-            output = {
-                "txid": trans["txid"],
-                "vout": output_index,
-                "amount": out.get("value"),
-                "address": out.get("scriptpubkey_address"),
-                "time": trans["status"].get("block_time")
-            }
-
-            outputs.append(output)
-
-    # FILTERING
-
-    # Keep only outputs after the original date/time -> Stop when no hits
-    filtered_date_outputs = [tx for tx in outputs
-                        if tx["time"] is not None
-                        and tx["time"] > dt_original_unix
-                        ]
-    
-    if not filtered_date_outputs:
-        print("STOP:No outputs after the original date.")
-        break
-
-    closest_output = min(
-        filtered_date_outputs,
-        key=lambda tx: abs(tx["amount"] - amount_original)
-    )
-
-    if not amount_min <= closest_output["amount"] <= amount_max:
-        print("STOP: Closest output is outside the set threshold")
-        break
-    
-    if closest_output["address"] is None:
-        print("STOP: Closest output has no address.")
-        break
-    
-    last_output = closest_output
-    address = closest_output["address"]
-
-if last_output is None:
+if result is None:
     print("No valid output matching the tracing criteria was found.")
 else:
-    pprint(last_output)
+    pprint(result)
 
 
 
