@@ -21,12 +21,14 @@ def is_valid_bitcoin_address(address):
 # INPUT Address
 user_input_address = input("Address:\n> ")
 
+# INPUT test case
 if user_input_address == "test":
     address = "1wiz18xYmhRX6xStj2b9t1rwWX4GKUgpv"
     dt_original = datetime(2014, 5, 1, 0, 0, tzinfo=timezone.utc)
     amount_original = 13_370_000
     threshold = 15
 
+# Input Validation
 else:
     if not is_valid_bitcoin_address(user_input_address):
         print("Invalid Bitcoin address")
@@ -131,12 +133,14 @@ while True:
 
             outputs.append(output)
 
-    # Keep only outputs after the original date/time
+    # FILTERING
+
+    # Keep only outputs after the original date/time -> Stop when no hits
     filtered_date_outputs = [tx for tx in outputs
                         if tx["time"] is not None
                         and tx["time"] > dt_original_unix
                         ]
-
+    
     if not filtered_date_outputs:
         print("STOP:No outputs after the original date.")
         break
@@ -157,7 +161,10 @@ while True:
     last_output = closest_output
     address = closest_output["address"]
 
-pprint(last_output)
+if last_output is None:
+    print("No valid output matching the tracing criteria was found.")
+else:
+    pprint(last_output)
 
 
 
