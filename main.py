@@ -8,6 +8,7 @@ from rich.pretty import pprint
 
 # https://mempool.space/api/address/1wiz18xYmhRX6xStj2b9t1rwWX4GKUgpv/txs
 
+METHODS = ["Trace by Address", "Trace by UTXO"]
 
 def is_valid_bitcoin_address(address):
     try:
@@ -49,14 +50,83 @@ def get_outgoing_outputs(transactions, address):
 
     return outputs
 
+def fetch_transaction_by_txid(txid):
+    url = f"https://mempool.space/api/tx/{txid}"
 
-def trace_by_address(
-    address,
-    dt_original_unix,
-    amount_original,
-    amount_min,
-    amount_max
-):
+    response = requests.get(url)
+
+    if response.status_code == 404:
+        return None
+
+    response.raise_for_status()
+    return response.json()
+
+
+def trace_by_address():
+    user_input_address = input("Address:\n> ")
+
+    if user_input_address == "test":
+        address = "1wiz18xYmhRX6xStj2b9t1rwWX4GKUgpv"
+        dt_original = datetime(2014, 5, 1, 0, 0, tzinfo=timezone.utc)
+        amount_original = 13_370_000
+        threshold = 15
+
+    # Input Validation
+    else:
+        if not is_valid_bitcoin_address(user_input_address):
+            print("Invalid Bitcoin address")
+            sys.exit()
+
+        address = user_input_address
+
+        # INPUT Date/Time
+        user_input_datetime = input("Date/Time (year month day hour minute) - UTC +0\n>")
+
+        try:
+            user_dt = [int(val) for val in user_input_datetime.split()]
+            
+            if len(user_dt) != 5:
+                raise ValueError("Exactly 5 numbers are required")
+            
+            dt_original = datetime(
+                user_dt[0], 
+                user_dt[1], 
+                user_dt[2], 
+                user_dt[3], 
+                user_dt[4], 
+                tzinfo=timezone.utc)
+        except ValueError:
+            print("One of your values isn't valid")
+            sys.exit()
+
+        # INPUT AMOUNT
+        try:
+            amount_original = int(input("Target amount:\n>"))
+            if amount_original <= 0:
+                print("Target amount must be greater than 0")
+                sys.exit()
+        except ValueError:
+            print("Entered target amount is not a valid number")
+            sys.exit()
+            
+        # INPUT Threshold
+        try:
+            threshold = int(input("Target threshold:\n>"))
+            if not 0 < threshold <= 100:
+                print("Threshold should be between 1 and 100")
+                sys.exit()
+        except ValueError:
+            print("Entered target threshold is not a valid number")
+            sys.exit()
+
+
+
+    dt_original_unix = int(dt_original.timestamp())
+
+    amount_min = amount_original * (1 - threshold / 100)
+    amount_max = amount_original * (1 + threshold / 100)
+    
+    
     visited = set()
     last_output = None
 
@@ -98,82 +168,69 @@ def trace_by_address(
 
     return last_output
 
+def trace_by_utxo():
+    txid = input("TXID:\n> ")
+    
+    transaction = fetch_transaction_by_txid(txid)
+    
+    if transaction is None:
+        print("Transaction not found.")
+        return None
+
+    try:
+        vout = int(input("VOUT:\n> "))
+        if vout < 0:
+            print("VOUT cannot be negative.")
+            return None
+    except ValueError:
+        print("VOUT must be a number.")
+        return None
+
+    try:
+        threshold = int(input("Threshold (%):\n> "))
+        if not 0 < threshold <= 100:
+            print("Threshold should be between 1 and 100.")
+            return None
+    except ValueError:
+        print("Threshold must be a number.")
+        return None
+
+    # UTXO tracing logic
+
+    return f"tx: {transaction}\nvout: {vout}\nthrehold: {threshold}"
+    
+
+result = None
+
 
 
 # INPUTS + VALIDATION
 
+# Method
+print("Choose Tracing-method:")
+
+for idx, method in enumerate(METHODS, start=1):
+    print(f"{idx}: {method}")
+
+try:
+    user_input_method = int(input("> "))
+
+    if not 1 <= user_input_method <= len(METHODS):
+        print("Invalid method/number.")
+        sys.exit()
+
+except ValueError:
+    print("Invalid method/number.")
+    sys.exit()
+
 # Bitcoin-Adress / Test Case
-user_input_address = input("Address:\n> ")
 
-if user_input_address == "test":
-    address = "1wiz18xYmhRX6xStj2b9t1rwWX4GKUgpv"
-    dt_original = datetime(2014, 5, 1, 0, 0, tzinfo=timezone.utc)
-    amount_original = 13_370_000
-    threshold = 15
+if user_input_method == 1:
+    result = trace_by_address()
+    
+elif user_input_method == 2:
+    result = trace_by_utxo()
 
-# Input Validation
-else:
-    if not is_valid_bitcoin_address(user_input_address):
-        print("Invalid Bitcoin address")
-        sys.exit()
-
-    address = user_input_address
-
-    # INPUT Date/Time
-    user_input_datetime = input("Date/Time (year month day hour minute) - UTC +0\n>")
-
-    try:
-        user_dt = [int(val) for val in user_input_datetime.split()]
-        
-        if len(user_dt) != 5:
-            raise ValueError("Exactly 5 numbers are required")
-        
-        dt_original = datetime(
-            user_dt[0], 
-            user_dt[1], 
-            user_dt[2], 
-            user_dt[3], 
-            user_dt[4], 
-            tzinfo=timezone.utc)
-    except ValueError:
-        print("One of your values isn't valid")
-        sys.exit()
-
-    # INPUT AMOUNT
-    try:
-        amount_original = int(input("Target amount:\n>"))
-        if amount_original <= 0:
-            print("Target amount must be greater than 0")
-            sys.exit()
-    except ValueError:
-        print("Entered target amount is not a valid number")
-        sys.exit()
-        
-    # INPUT Threshold
-    try:
-        threshold = int(input("Target threshold:\n>"))
-        if not 0 < threshold <= 100:
-            print("Threshold should be between 1 and 100")
-            sys.exit()
-    except ValueError:
-        print("Entered target threshold is not a valid number")
-        sys.exit()
-
-
-
-dt_original_unix = int(dt_original.timestamp())
-
-amount_min = amount_original * (1 - threshold / 100)
-amount_max = amount_original * (1 + threshold / 100)
-
-
-result = trace_by_address(
-    address,
-    dt_original_unix,
-    amount_original,
-    amount_min,
-    amount_max
-)
 
 if result is None:
     print("No valid output matching the tracing criteria was found.")
